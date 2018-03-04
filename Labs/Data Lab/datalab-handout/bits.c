@@ -153,7 +153,7 @@ int bitAnd(int x, int y) {
  */
 int getByte(int x, int n) {
   //获取0-n的字节
-  return x>>(n * 8) & 0xff;
+  return x>>(n<<3) & 0xff;
 }
 /* 
  * logicalShift - shift x to the right by n, using a logical shift
@@ -163,9 +163,11 @@ int getByte(int x, int n) {
  *   Max ops: 20
  *   Rating: 3 
  */
-int logicalShift(int x, int n) {
-  //强制进行逻辑左移
-  return x>>n & (0x1<<31-n);
+ int logicalShift(int x, int n) {
+  //强制进行逻辑右移
+  int mask = (!n ^ 1);
+  mask = (mask<<31)>>(n+((mask<<31)>>31));  //n-1了
+  return x>>n & ~mask;
 }
 /*
  * bitCount - returns count of number of 1's in word
@@ -174,7 +176,7 @@ int logicalShift(int x, int n) {
  *   Max ops: 40
  *   Rating: 4
  */
-int bitCount(int x) {
+ int bitCount(int x) {
 	/*思路
 需要进行移位操作
 mask1 = 0x5555 5555，2位一组
@@ -183,21 +185,25 @@ mask3 = 0x0F0F 0F0F，8位一组
 mask4 = 0x00FF 00FF，16位一组
 mask5 = 0x0000 FFFF，32位一组最终求和
 	 */
-    int _mask1 = 0x55<<8 + 0x55;
-    int _mask2 = 0x33<<8 + 0x33;
-    int _mask3 = 0x0F<<8 + 0x0F;
-    int _mask4 = 0xFF<<8;
-    int _mask5 = 0xFF<<8 + 0xFF;
-    _mask1 = _mask1<< 16 + _mask1;
-    _mask2 = _mask2<< 16 + _mask2;
-    _mask3 = _mask3<< 16 + _mask3;
-    _mask4  = _mask4 <<16 + _mask4
-    _mask5 = _mask5<< 16 + _mask5;
-    x = x & _mask1 + (x>>1 & _mask1);
-    x = x & _mask2 + (x>>2 & _mask2);
-    x = x & _mask3 + (x>>4 & _mask3);
-    x = x & _mask4 + (x>>8 & _mask4);
-    x = x & _mask5 + (x>>16 & _mask5);
+    int _mask1 = 0x55;
+    int _mask2 = 0x33;
+    int _mask3 = 0x0f;
+    int _mask4  =0xff;
+    int _mask5 = 0xff;
+    _mask1 = (_mask1<<8) + _mask1;
+    _mask1 = (_mask1<<16) + _mask1;
+    _mask2 = (_mask2<<8) + _mask2;
+    _mask2 = (_mask2<<16) + _mask2;
+    _mask3 = (_mask3<<8) + _mask3;
+    _mask3 = (_mask3<<16) + _mask3;
+    _mask4 = (_mask4<<8);
+    _mask4 = ~((_mask4<<16) + _mask4);
+    _mask5 = (_mask5<<8) + _mask5;
+    x = (x & _mask1) + ((x>>1) & _mask1);
+    x = (x & _mask2) + ((x>>2) & _mask2);
+    x = (x & _mask3) + ((x>>4) & _mask3);
+    x = (x & _mask4) + ((x>>8) & _mask4);
+    x = (x & _mask5) + ((x>>16) & _mask5);
     return x;
 }
 /* 
@@ -208,7 +214,16 @@ mask5 = 0x0000 FFFF，32位一组最终求和
  *   Rating: 4 
  */
 int bang(int x) {
-  return 
+  // //思路 求出x的-x 如果x=-x, 最高为。使用了 https://www.cnblogs.com/tenlee/p/4951639.html
+  // int mask = 0x1<<31;
+  // x = x + ((mask & x) ^ ((1<<31) + 1));
+  // //转换为补码负数；注意负数的情况
+  // int tmp2 = ~x;
+  // return ((tmp2>>31) & 0x1) ^ 0x1;
+  int temp = ~x + 1;
+  temp = temp | x;//非0为一定最高为1；
+  temp=temp>>31;
+  return temp + 1;
 }
 /* 
  * tmin - return minimum two's complement integer 
@@ -217,11 +232,11 @@ int bang(int x) {
  *   Rating: 1
  */
 int tmin(void) {
-  return 2;
+  return 0x1<<31;
 }
 /* 
  * fitsBits - return 1 if x can be represented as an 
- *  n-bit, two's complement integer.
+ *  n-bit, two's complement integer. 返回1，x是否能高被表示为n位的补码
  *   1 <= n <= 32
  *   Examples: fitsBits(5,3) = 0, fitsBits(-4,3) = 1
  *   Legal ops: ! ~ & ^ | + << >>
@@ -229,7 +244,13 @@ int tmin(void) {
  *   Rating: 2
  */
 int fitsBits(int x, int n) {
-  return 2;
+  /*介于[-2^n~2^(n-1)]之间的数字都可以
+  */
+  int minus1 = (1<<31)>>31;
+  int min = (1<<31)>>(31 + (~n + 1));
+  int minflag = !!(min & x);//0是比min小
+  //printf("minflag=%d\n",minflag);
+  return !minflag;
 }
 /* 
  * divpwr2 - Compute x/(2^n), for 0 <= n <= 30
@@ -240,7 +261,8 @@ int fitsBits(int x, int n) {
  *   Rating: 2
  */
 int divpwr2(int x, int n) {
-    return 2;
+    x = x + (((1<<n) + ((1<<31)>>31)) & (((1<<31) & x)>>31));  //一定要注意运算符优先级 负数加上偏移量 2^n-1
+    return x>>n;
 }
 /* 
  * negate - return -x 
@@ -250,7 +272,7 @@ int divpwr2(int x, int n) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  return ~x+1;
 }
 /* 
  * isPositive - return 1 if x > 0, return 0 otherwise 
@@ -260,7 +282,7 @@ int negate(int x) {
  *   Rating: 3
  */
 int isPositive(int x) {
-  return 2;
+  return ~((1<<31 & x)>>31) & 0x1 & !!x; //第一个!把x变为二值变量
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -270,7 +292,14 @@ int isPositive(int x) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  int signx = x>>31;
+  int signy = y>>31;
+  //比较x y的大小关系
+  int s = !((y + (~x + 1)) & (1<<31));//正数是1(包括相同的,x<=y)，负数是0（y<x）
+  //printf("s=%d\n", s);
+  int differ = !!(signx ^ signy) & (!!signx);
+  //同号相见不会出现溢出的问题。如果出现溢出。也就是y-x为(正-负)情形，当s=0时溢出。
+  return (s & !(signx ^ signy)) | differ;
 }
 /*
  * ilog2 - return floor(log base 2 of x), where x > 0
